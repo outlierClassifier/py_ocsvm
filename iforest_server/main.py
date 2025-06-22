@@ -160,4 +160,4 @@ if __name__ == "__main__":
     print("Starting Isolation Forest server...")
     import uvicorn
     print("Uvicorn version:", uvicorn.__version__)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8006)
