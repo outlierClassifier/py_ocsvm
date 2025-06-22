@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Any
 
 class Signal(BaseModel):
     filename: str
@@ -11,6 +11,13 @@ class Discharge(BaseModel):
     times: List[float]
     length: int
     anomalyTime: Optional[float] = None
+
+    @field_validator("signals", mode="before")
+    @classmethod
+    def _ensure_list(cls, v: Any) -> List[Signal] | Any:
+        if isinstance(v, dict):
+            return [v]
+        return v
 
 class StartTrainingRequest(BaseModel):
     totalDischarges: int = Field(..., ge=1)
