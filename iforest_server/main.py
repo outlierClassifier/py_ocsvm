@@ -6,7 +6,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from sklearn.ensemble import IsolationForest
 
-from .models.schemas import (
+from models.schemas import (
     StartTrainingRequest,
     StartTrainingResponse,
     Discharge,

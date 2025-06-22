@@ -2,8 +2,8 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi.testclient import TestClient
-from ocsvm_server.main import app
-from ocsvm_server.models.schemas import Signal, Discharge
+from iforest_server.main import app
+from iforest_server.models.schemas import Signal, Discharge
 
 client = TestClient(app)
 
