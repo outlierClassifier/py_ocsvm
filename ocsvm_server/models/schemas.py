@@ -7,7 +7,7 @@ class Signal(BaseModel):
 
 class Discharge(BaseModel):
     id: str
-    signals: Signal
+    signals: List[Signal]
     times: List[float]
     length: int
     anomalyTime: Optional[float] = None
