@@ -1,6 +1,6 @@
-# py_ocsvm
+# py_iforest
 
-This project provides a simple One-Class SVM service that follows the
+This project provides a simple Isolation Forest service that follows the
 protocol described in the provided OpenAPI specification.  The API is
 implemented using **FastAPI** and exposes endpoints for training and
 prediction.
@@ -27,7 +27,7 @@ The service exposes the following endpoints:
 - `POST /predict` – Predict if a discharge is `Normal` or `Anomaly`.
 
 The implementation keeps everything in memory and trains a scikit-learn
-`OneClassSVM` once all discharges have been received.  Each `Discharge`
+`IsolationForest` once all discharges have been received.  Each `Discharge`
 may include an optional `anomalyTime` field when the sample represents a
 disruption.  During training these anomalous discharges are ignored so
 only normal data is used to fit the model.

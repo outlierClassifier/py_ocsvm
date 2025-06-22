@@ -4,9 +4,9 @@ from typing import List
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from sklearn.svm import OneClassSVM
+from sklearn.ensemble import IsolationForest
 
-from models.schemas import (
+from .models.schemas import (
     StartTrainingRequest,
     StartTrainingResponse,
     Discharge,
@@ -19,7 +19,7 @@ from models.schemas import (
 
 app = FastAPI()
 
-MODEL_NAME = "ocsvm"
+MODEL_NAME = "iforest"
 start_time = time.time()
 last_training = None
 
@@ -27,7 +27,7 @@ last_training = None
 current_training_id = None
 expected_discharges = 0
 received_discharges: List[Discharge] = []
-model: OneClassSVM | None = None
+model: IsolationForest | None = None
 
 @app.get("/health", response_model=HealthCheckResponse)
 def health() -> HealthCheckResponse:
@@ -109,7 +109,7 @@ def _train_model():
         return
 
     X_array = np.array(X)
-    model = OneClassSVM(gamma="auto").fit(X_array)
+    model = IsolationForest(random_state=42, contamination='auto').fit(X_array)
     end = time.time()
     last_training = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     # TODO: Calculate real metrics based on validation set if available
@@ -157,7 +157,7 @@ def predict(discharge: Discharge):
     )
 
 if __name__ == "__main__":
-    print("Starting OCSVM server...")
+    print("Starting Isolation Forest server...")
     import uvicorn
     print("Uvicorn version:", uvicorn.__version__)
     uvicorn.run(app, host="0.0.0.0", port=8000)
