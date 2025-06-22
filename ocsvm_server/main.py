@@ -1,4 +1,3 @@
-from math import log
 import time
 import uuid
 from typing import List
@@ -7,7 +6,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from sklearn.svm import OneClassSVM
 
-from models.schemas import (
+from ocsvm_server.models.schemas import (
     StartTrainingRequest,
     StartTrainingResponse,
     Discharge,
@@ -29,7 +28,6 @@ current_training_id = None
 expected_discharges = 0
 received_discharges: List[Discharge] = []
 model: OneClassSVM | None = None
-model_max_features = 0  # Store max features length for consistent prediction
 
 @app.get("/health", response_model=HealthCheckResponse)
 def health() -> HealthCheckResponse:
@@ -65,60 +63,53 @@ def push_discharge(ordinal: int, discharge: Discharge):
         _train_model()
     return ack
 
-def _extract_windowed_features(values, window_size=64):
+def _extract_windowed_features(values, window_size=64) -> List[List[float]]:
     """Extract features from windowed signal data"""
-    features = []
+    features: List[List[float]] = []
+    if len(values) < window_size:
+        window = values
+        mean_val = np.mean(window)
+        fft = np.fft.fft(window)
+        psd = np.sum(np.abs(fft) ** 2) / len(window)
+        features.append([mean_val, psd])
+        return features
+
     for i in range(0, len(values) - window_size + 1, window_size):
         window = values[i:i + window_size]
-        
+
         # Feature 1: Mean value
         mean_val = np.mean(window)
-        
+
         # Feature 2: Power spectral density (sum of squared FFT coefficients)
         fft = np.fft.fft(window)
         psd = np.sum(np.abs(fft) ** 2) / len(window)
-        
-        features.extend([mean_val, psd])
-    
+
+        features.append([mean_val, psd])
+
     return features
 
 def _train_model():
-    global model, last_training, current_training_id, model_max_features
+    global model, last_training, current_training_id
     start = time.time()
     normal = [d for d in received_discharges if d.anomalyTime is None]
-    
-    # Extract windowed features from all signals for each discharge
-    X = []
+
+    # Extract windowed features from all signals of normal discharges
+    X: List[List[float]] = []
     for d in normal:
-        # Concatenate all signal values for this discharge
-        discharge_values = []
+        discharge_values: List[float] = []
         for signal in d.signals:
             discharge_values.extend(signal.values)
-        
-        # Extract windowed features
+
         features = _extract_windowed_features(discharge_values, window_size=64)
-        if len(features) > 0:  # Only add if we have at least one complete window
-            X.append(features)
-    
+        X.extend(features)
+
     if len(X) == 0:
         model = None
         current_training_id = None
         return
-    
-    # Pad features to same length (in case discharges have different numbers of windows)
-    max_features = max(len(x) for x in X)
-    model_max_features = max_features  # Store for prediction
-    X_padded = []
-    for x in X:
-        if len(x) < max_features:
-            # Pad with zeros for missing windows
-            x_padded = x + [0.0] * (max_features - len(x))
-        else:
-            x_padded = x[:max_features]
-        X_padded.append(x_padded)
-    
-    X = np.array(X_padded)
-    model = OneClassSVM(gamma="auto").fit(X)
+
+    X_array = np.array(X)
+    model = OneClassSVM(gamma="auto").fit(X_array)
     end = time.time()
     last_training = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     # TODO: Calculate real metrics based on validation set if available
@@ -146,18 +137,14 @@ def predict(discharge: Discharge):
     
     # Extract windowed features using the same method as training
     features = _extract_windowed_features(discharge_values, window_size=64)
-    
-    # Pad or truncate to match training data dimensions
-    if len(features) < model_max_features:
-        # Pad with zeros for missing windows
-        features = features + [0.0] * (model_max_features - len(features))
-    else:
-        # Truncate to max_features
-        features = features[:model_max_features]
-    
-    x = np.array(features).reshape(1, -1)
-    score = float(model.decision_function(x)[0])
-    pred = model.predict(x)[0]
+    if len(features) == 0:
+        raise HTTPException(status_code=400, detail="Not enough data for prediction")
+
+    X = np.array(features)
+    scores = model.decision_function(X)
+    preds = model.predict(X)
+    score = float(np.mean(scores))
+    pred = 1 if np.mean(preds) >= 0 else -1
     prediction = "Normal" if pred == 1 else "Anomaly"
     # simple sigmoid to map score to confidence 0-1
     confidence = float(1 / (1 + np.exp(-score)))
