@@ -5,6 +5,7 @@ from typing import List
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from sklearn.svm import OneClassSVM
+import pickle
 
 from models.schemas import (
     StartTrainingRequest,
@@ -114,6 +115,9 @@ def _train_model():
     last_training = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     # TODO: Calculate real metrics based on validation set if available
     # TODO: Send webhook to orchestrator
+    # save the model
+    with open(f"{MODEL_NAME}.pkl", "wb") as f:
+        pickle.dump(model, f)
     metrics = TrainingMetrics(accuracy=1.0, loss=0.0, f1Score=1.0)
     TrainingResponse(
         status="SUCCESS",
@@ -159,5 +163,11 @@ def predict(discharge: Discharge):
 if __name__ == "__main__":
     print("Starting OCSVM server...")
     import uvicorn
-    print("Uvicorn version:", uvicorn.__version__)
+    # Load the model if it exists
+    try:
+        with open(f"{MODEL_NAME}.pkl", "rb") as f:
+            model = pickle.load(f)
+            print("Model loaded successfully.")
+    except FileNotFoundError:
+        print("No pre-trained model found.")
     uvicorn.run(app, host="0.0.0.0", port=8000)
