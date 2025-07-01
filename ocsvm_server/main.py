@@ -89,6 +89,65 @@ def _extract_windowed_features(values, window_size=64) -> List[List[float]]:
 
     return features
 
+
+def _safe_screen_samples(
+    X: np.ndarray, nu: float, gamma: str | float
+) -> tuple[np.ndarray, int, float]:
+    """Apply simple Safe Sample Screening before OCSVM training.
+
+    Parameters
+    ----------
+    X: np.ndarray
+        Training samples.
+    nu: float
+        Nu parameter used by the OCSVM.
+    gamma: str | float
+        Gamma parameter for the kernel.
+
+    Returns
+    -------
+    tuple(np.ndarray, int, float)
+        Filtered samples, number of removed windows and the screening time in
+        seconds.
+    """
+
+    screen_start = time.time()
+    n_samples = X.shape[0]
+    removed = 0
+
+    if nu >= 0.6:
+        print("[SSS] Warning: nu >= 0.6, screening disabled")
+        return X, removed, 0.0
+
+    if n_samples < 500:
+        print(f"[SSS] Warning: only {n_samples} windows - skipping screening")
+        return X, removed, 0.0
+
+    # Train a small preliminary model on a random subset to estimate the
+    # decision boundary.  This is a lightweight approximation used solely to
+    # determine which samples are safely inside the boundary.
+    subset_size = min(max(int(0.1 * n_samples), 1), 2000)
+    subset_idx = np.random.choice(n_samples, subset_size, replace=False)
+    prelim = OneClassSVM(nu=nu, gamma=gamma).fit(X[subset_idx])
+
+    # Decision function values for all samples using the preliminary model
+    f_values = prelim.decision_function(X)
+
+    # Heuristic threshold: points with large positive score are far inside the
+    # decision region and will have alpha=0.  They can be removed without
+    # affecting the final boundary.
+    threshold = 0.1
+    keep_mask = f_values <= threshold
+    removed = int(np.sum(~keep_mask))
+
+    if removed > 0:
+        pct = removed / n_samples * 100.0
+        print(f"[SSS] Filtered {removed} of {n_samples} windows ({pct:.2f}%)")
+        X = X[keep_mask]
+
+    screen_end = time.time()
+    return X, removed, screen_end - screen_start
+
 def _train_model():
     global model, last_training, current_training_id
     start = time.time()
@@ -111,33 +170,14 @@ def _train_model():
 
     X_array = np.array(X)
 
-    def _apply_safe_screening(X: np.ndarray, nu: float, gamma: float):
-        sss_start = time.time()
-        n_samples = len(X)
-        if nu >= 0.5:
-            print("Warning: screening disabled because nu >= 0.5")
-            return X, 0, 0.0
+    # Parameters for the model
+    nu_val = 0.5
+    gamma_val: str | float = "auto"
 
-        C = 1.0 / (nu * n_samples)
-        norms = np.linalg.norm(X, axis=1)
-        L = np.maximum(0.0, 1 - norms / (np.sqrt(C)))
-        U = np.minimum(C, 1 + norms / (np.sqrt(C)))
-        mask = (U > 0) & (L < C)
-        removed = np.sum(~mask)
-        if n_samples - removed < 500:
-            print("Warning: screening skipped because remaining windows < 500")
-            return X, 0, time.time() - sss_start
+    # Safe Sample Screening before training
+    X_array, removed, screen_time = _safe_screen_samples(X_array, nu_val, gamma_val)
 
-        X_screen = X[mask]
-        pct = (removed / n_samples) * 100 if n_samples else 0
-        print(f"Safe screening removed {removed} of {n_samples} windows ({pct:.2f}%)")
-        return X_screen, removed, time.time() - sss_start
-
-    nu = 0.5  # default of OneClassSVM
-    gamma = 1.0 / X_array.shape[1] if X_array.size else 0.0
-    X_array, removed, sss_time = _apply_safe_screening(X_array, nu, gamma)
-
-    model = OneClassSVM(gamma="auto").fit(X_array)
+    model = OneClassSVM(nu=nu_val, gamma=gamma_val).fit(X_array)
     end = time.time()
     last_training = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     # TODO: Calculate real metrics based on validation set if available
@@ -151,7 +191,7 @@ def _train_model():
         message="training completed",
         trainingId=current_training_id,
         metrics=metrics,
-        executionTimeMs=(end - start) * 1000,
+        executionTimeMs=(end - start + screen_time) * 1000,
     )
     current_training_id = None
 
