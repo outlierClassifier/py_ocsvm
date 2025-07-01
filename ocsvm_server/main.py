@@ -110,6 +110,33 @@ def _train_model():
         return
 
     X_array = np.array(X)
+
+    def _apply_safe_screening(X: np.ndarray, nu: float, gamma: float):
+        sss_start = time.time()
+        n_samples = len(X)
+        if nu >= 0.5:
+            print("Warning: screening disabled because nu >= 0.5")
+            return X, 0, 0.0
+
+        C = 1.0 / (nu * n_samples)
+        norms = np.linalg.norm(X, axis=1)
+        L = np.maximum(0.0, 1 - norms / (np.sqrt(C)))
+        U = np.minimum(C, 1 + norms / (np.sqrt(C)))
+        mask = (U > 0) & (L < C)
+        removed = np.sum(~mask)
+        if n_samples - removed < 500:
+            print("Warning: screening skipped because remaining windows < 500")
+            return X, 0, time.time() - sss_start
+
+        X_screen = X[mask]
+        pct = (removed / n_samples) * 100 if n_samples else 0
+        print(f"Safe screening removed {removed} of {n_samples} windows ({pct:.2f}%)")
+        return X_screen, removed, time.time() - sss_start
+
+    nu = 0.5  # default of OneClassSVM
+    gamma = 1.0 / X_array.shape[1] if X_array.size else 0.0
+    X_array, removed, sss_time = _apply_safe_screening(X_array, nu, gamma)
+
     model = OneClassSVM(gamma="auto").fit(X_array)
     end = time.time()
     last_training = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
