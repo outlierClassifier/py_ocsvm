@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Any
 
+MODEL_NAME = "iforest"
+WINDOW_SIZE = 32
+
 class Signal(BaseModel):
     filename: str
     values: List[float]
@@ -42,13 +45,20 @@ class TrainingResponse(BaseModel):
     metrics: TrainingMetrics
     executionTimeMs: float
 
+class WindowProperties(BaseModel):
+    featureValues: List[float] = Field(..., min_items=1)
+    prediction: str = Field(..., pattern=r'^(Anomaly|Normal)$')
+    justification: float
+
 class PredictionResponse(BaseModel):
     prediction: str
     confidence: float
     executionTimeMs: float
     model: str
+    windowSize: int = WINDOW_SIZE
+    windows: List[WindowProperties]
 
 class HealthCheckResponse(BaseModel):
-    name: str
+    name: str = MODEL_NAME
     uptime: float
     lastTraining: str
