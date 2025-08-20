@@ -199,7 +199,6 @@ def _safe_screen_samples(
 def _train_model():
     global model, last_training, current_training_id
     start = time.time()
-    normal = [d for d in received_discharges if d.anomalyTime is None]
 
     # Normalize received discharges
     filter_and_normalize_received_discharges(training=True)
