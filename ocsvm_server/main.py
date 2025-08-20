@@ -65,9 +65,6 @@ def push_discharge(ordinal: int, discharge: Discharge):
         raise HTTPException(status_code=503, detail="No active training session")
     if ordinal != len(received_discharges) + 1:
         raise HTTPException(status_code=400, detail="Unexpected ordinal")
-    if discharge.anomalyTime is None:
-        # Only store normal discharges for training
-        received_discharges.append(discharge)
     ack = DischargeAck(ordinal=ordinal, totalDischarges=expected_discharges)
     if len(received_discharges) == expected_discharges:
         print(f"Received all {expected_discharges} discharges, starting training...")
@@ -75,10 +72,11 @@ def push_discharge(ordinal: int, discharge: Discharge):
         print("Training completed.")
     return ack
 
-def normalize_received_discharges(training: bool = False):
+def filter_and_normalize_received_discharges(training: bool = False):
     """Normalize the received discharges to ensure consistent data format."""
     # Search max value for each signal
     global max_signal_values, received_discharges
+    received_discharges = [d for d in received_discharges if d.anomalyTime is None]
     if training:
         max_signal_values = {}
         for discharge in received_discharges:
@@ -204,7 +202,7 @@ def _train_model():
     normal = [d for d in received_discharges if d.anomalyTime is None]
 
     # Normalize received discharges
-    normalize_received_discharges(training=True)
+    filter_and_normalize_received_discharges(training=True)
 
     # Extract windowed features from all signals of normal discharges
     X: List[List[float]] = []
@@ -263,7 +261,7 @@ def predict(discharge: Discharge):
     start = time.time()
     
     received_discharges = [discharge]  # Reset received discharges to only this one for prediction
-    normalize_received_discharges(training=False)
+    filter_and_normalize_received_discharges(training=False)
 
     # Extract values from all signals for this discharge
     discharge_values = []
