@@ -65,6 +65,7 @@ def push_discharge(ordinal: int, discharge: Discharge):
         raise HTTPException(status_code=503, detail="No active training session")
     if ordinal != len(received_discharges) + 1:
         raise HTTPException(status_code=400, detail="Unexpected ordinal")
+    received_discharges.append(discharge)
     ack = DischargeAck(ordinal=ordinal, totalDischarges=expected_discharges)
     if len(received_discharges) == expected_discharges:
         print(f"Received all {expected_discharges} discharges, starting training...")
